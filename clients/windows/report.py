@@ -201,6 +201,10 @@ async def stream_music(url):
 
 
 def main():
+    if sys.platform == "win32":
+        for stream in (sys.stdout, sys.stderr):
+            if stream is not None and not stream.isatty():
+                stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command")
     periodic = commands.add_parser("run", help="持续采集并上报（默认）")

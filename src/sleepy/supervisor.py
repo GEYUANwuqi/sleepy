@@ -38,6 +38,18 @@ def bind_socket(host, port):
         raise
 
 
+def python_process_options():
+    # socket.share() and process supervision need the interpreter's PID, not a venv launcher.
+    if os.name == "nt" and os.path.normcase(sys.executable) != os.path.normcase(
+        sys._base_executable
+    ):
+        return {
+            "executable": sys._base_executable,
+            "env": {**os.environ, "__PYVENV_LAUNCHER__": sys.executable},
+        }
+    return {}
+
+
 class Control:
     def __init__(self, pipe):
         self.pipe = pipe
@@ -116,6 +128,7 @@ class Supervisor:
             stdin=subprocess.PIPE,
             text=True,
             encoding="utf-8",
+            **python_process_options(),
             **kwargs,
         )
         process, parent = Process(handle), Control(handle.stdin)

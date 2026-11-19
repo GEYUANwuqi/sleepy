@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-sleepy = "sleepy.cli:main"
+sleepy = "sleepy.cli:run_cli"
 
 [dependency-groups]
 dev = ["psutil>=6", "pytest>=8", "pytest-asyncio>=0.25", "ruff>=0.9"]

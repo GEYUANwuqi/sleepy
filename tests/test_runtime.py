@@ -17,6 +17,7 @@ import pytest
 
 from sleepy.security import HASHER
 from sleepy.storage import Store
+from sleepy.supervisor import python_process_options
 
 
 def eventually(work, timeout=12):
@@ -88,6 +89,7 @@ def running(tmp_path, tls=False):
             args,
             stdout=log,
             stderr=log,
+            **python_process_options(),
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
         )
         children = []
@@ -101,9 +103,13 @@ def running(tmp_path, tls=False):
                 if tls
                 else True,
             ) as client:
-                eventually(
-                    lambda: process.poll() is None and client.get("/api/status").status_code == 200
-                )
+
+                def ready():
+                    if process.poll() is not None:
+                        pytest.fail(log_path.read_text(encoding="utf-8", errors="replace"))
+                    return client.get("/api/status").status_code == 200
+
+                eventually(ready)
                 children = psutil.Process(process.pid).children()
                 yield process, client, base, log_path
         finally:
@@ -158,7 +164,9 @@ def test_three_processes_sse_restart_and_clean_shutdown(tmp_path):
             lines = stream.iter_lines()
             data = next(line for line in lines if line.startswith("data:"))
             assert "runtime" in data  # Delivered immediately, while the stream stays open.
-        backend_pid = int(re.findall(r"backend starting pid=(\d+)", log_path.read_text())[-1])
+        backend_pid = int(
+            re.findall(r"backend starting pid=(\d+)", log_path.read_text(encoding="utf-8"))[-1]
+        )
         psutil.Process(backend_pid).kill()
         eventually(lambda: client.get("/api/status").status_code == 503, timeout=2)
         eventually(lambda: client.get("/api/status").status_code == 200)
@@ -172,7 +180,7 @@ def test_three_processes_sse_restart_and_clean_shutdown(tmp_path):
             process.wait(timeout=10)
         assert process.returncode == 0
         assert all(not child.is_running() for child in active_children)
-        log = log_path.read_text()
+        log = log_path.read_text(encoding="utf-8")
         assert "web stopped exit=0" in log and "backend stopped exit=0" in log
         assert "Fatal Python error" not in log
         store = Store(tmp_path)
@@ -224,13 +232,17 @@ def test_logout_ends_admin_stream_and_public_stream_remains_available(tmp_path):
 def test_restart_budget_stops_the_entire_application(tmp_path):
     with running(tmp_path) as (process, client, _base, log_path):
         for attempt in range(4):
-            pids = re.findall(r"backend starting pid=(\d+)", log_path.read_text())
+            pids = re.findall(r"backend starting pid=(\d+)", log_path.read_text(encoding="utf-8"))
             psutil.Process(int(pids[-1])).kill()
             if attempt < 3:
                 count = len(pids)
                 eventually(
                     lambda previous_count=count: (
-                        len(re.findall(r"backend starting pid=(\d+)", log_path.read_text()))
+                        len(
+                            re.findall(
+                                r"backend starting pid=(\d+)", log_path.read_text(encoding="utf-8")
+                            )
+                        )
                         > previous_count
                     ),
                     timeout=12,
@@ -238,8 +250,8 @@ def test_restart_budget_stops_the_entire_application(tmp_path):
                 eventually(lambda: client.get("/api/status").status_code == 200)
         process.wait(timeout=10)
         assert process.returncode != 0
-        assert "耗尽重启次数" in log_path.read_text()
-        assert "web stopped exit=0" in log_path.read_text()
+        assert "耗尽重启次数" in log_path.read_text(encoding="utf-8")
+        assert "web stopped exit=0" in log_path.read_text(encoding="utf-8")
 
 
 def test_occupied_public_port_leaves_no_children(tmp_path):
@@ -262,6 +274,7 @@ def test_occupied_public_port_leaves_no_children(tmp_path):
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=5,
             check=False,
         )

@@ -2,6 +2,7 @@
 
 import logging
 import os
+import sys
 from pathlib import Path
 
 import click
@@ -120,5 +121,13 @@ def pwd(data_dir):
         raise click.ClickException("请先停止使用此数据目录的 Sleepy 实例，再重置密码。") from None
 
 
-if __name__ == "__main__":
+def run_cli():
+    if sys.platform == "win32":
+        for stream in (sys.stdout, sys.stderr):
+            if stream is not None and not stream.isatty():
+                stream.reconfigure(encoding="utf-8")
     main()
+
+
+if __name__ == "__main__":
+    run_cli()
