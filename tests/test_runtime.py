@@ -111,7 +111,11 @@ def running(tmp_path, tls=False):
 
                 eventually(ready)
                 children = psutil.Process(process.pid).children()
-                yield process, client, base, log_path
+                try:
+                    yield process, client, base, log_path
+                except Exception:
+                    print(log_path.read_text(encoding="utf-8", errors="replace"))
+                    raise
         finally:
             if process.poll() is None:
                 graceful_stop(process)
@@ -168,7 +172,9 @@ def test_three_processes_sse_restart_and_clean_shutdown(tmp_path):
             re.findall(r"backend starting pid=(\d+)", log_path.read_text(encoding="utf-8"))[-1]
         )
         psutil.Process(backend_pid).kill()
-        eventually(lambda: client.get("/api/status").status_code == 503, timeout=2)
+        # An in-flight request can predate the supervisor noticing the exit.
+        # Keep polling during the two-second backoff even if that request stalls.
+        eventually(lambda: client.get("/api/status", timeout=0.25).status_code == 503, timeout=2)
         eventually(lambda: client.get("/api/status").status_code == 200)
         assert client.get("/api/status").json()["devices"][0]["name"] == "runtime"
         assert client.get("/api/admin/devices").status_code == 200  # Session survived restart.

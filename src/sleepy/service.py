@@ -101,7 +101,9 @@ def main():
                 await watcher
             sock.close()
 
-    asyncio.run(run())
+    # The supervisor keeps the listening socket for future children. A Windows
+    # proactor would bind it to this process's I/O completion port after accept.
+    asyncio.run(run(), loop_factory=asyncio.SelectorEventLoop if os.name == "nt" else None)
 
 
 if __name__ == "__main__":
