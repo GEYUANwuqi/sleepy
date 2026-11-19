@@ -1,0 +1,10 @@
+**
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!src/
+!src/sleepy/
+!src/sleepy/*.py
+!src/sleepy/static/
+!src/sleepy/static/**

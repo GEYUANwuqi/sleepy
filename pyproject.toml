@@ -1,0 +1,47 @@
+[project]
+name = "sleepy"
+version = "0.1.0"
+description = "Self-hosted personal presence and device status dashboard"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "argon2-cffi>=23.1",
+    "click>=8.1",
+    "fastapi>=0.115,<1",
+    "filelock>=3.16",
+    "httpx>=0.28,<1",
+    "pydantic>=2.10,<3",
+    "tzdata>=2025.1",
+    "uvicorn>=0.34,<1",
+]
+
+[project.scripts]
+sleepy = "sleepy.cli:main"
+
+[dependency-groups]
+dev = ["psutil>=6", "pytest>=8", "pytest-asyncio>=0.25", "ruff>=0.9"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.uv.build-backend]
+source-include = [
+    "frontend/src/**", "frontend/index.html", "frontend/package*.json", "frontend/*.ts",
+    "frontend/tsconfig.json", "frontend/.prettierrc.json", "frontend/tests/**",
+    "clients/README.md", "clients/android/*.js", "clients/windows/*.py", "clients/windows/*.ps1",
+    "clients/linux/*.py", "clients/linux/*.service",
+    "docs/**", "tests/*.py", "uv.lock",
+    ".github/workflows/check.yml",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.18,<0.13.0"]
+build-backend = "uv_build"
