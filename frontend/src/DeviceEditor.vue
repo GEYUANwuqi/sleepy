@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import {
-  fields,
+  deviceFields,
   kindNames,
   systemNames,
   type DeviceConfig,
@@ -40,8 +40,11 @@ const form = ref<DeviceConfig>(
 const picking = ref(false)
 const addButton = ref<HTMLButtonElement>()
 const activeFields = computed(() =>
-  [...fields, ...form.value.custom_fields].filter((f) => form.value.enabled_fields.includes(f.key)),
+  deviceFields(form.value.custom_fields).filter((f) => form.value.enabled_fields.includes(f.key)),
 )
+function isCustom(field: { key: string; name: string }): field is CustomField {
+  return 'type' in field
+}
 function closePicker() {
   picking.value = false
   nextTick(() => addButton.value?.focus())
@@ -59,6 +62,12 @@ function disableField(key: string) {
 function removeField(key: string) {
   disableField(key)
   form.value.custom_fields = form.value.custom_fields.filter((f) => f.key !== key)
+}
+function setPowerField(key: string, checked: boolean) {
+  for (const f of form.value.custom_fields) {
+    if (f.key === key && checked) f.role = 'external_power'
+    else delete f.role
+  }
 }
 function setHints(enabled: boolean) {
   const { in_use, not_using, offline, device_slice } = props.defaults
@@ -152,18 +161,31 @@ function cleanPublic() {
             <div class="field-cards">
               <article v-for="field in activeFields" :key="field.key" class="field-card">
                 <div>
-                  <template v-if="'type' in field">
+                  <template v-if="isCustom(field)">
                     <input
                       v-model.trim="field.name"
                       required
                       maxlength="40"
                       :aria-label="`${field.key} 显示名称`"
                     />
-                    <select v-model="field.type" :aria-label="`${field.key} 字段类型`">
+                    <select
+                      v-model="field.type"
+                      @change="delete field.role"
+                      :aria-label="`${field.key} 字段类型`"
+                    >
                       <option value="text">文本</option>
                       <option value="number">数值</option>
                       <option value="boolean">布尔值</option>
                     </select>
+                    <label v-if="field.type === 'boolean'" class="check"
+                      ><input
+                        type="checkbox"
+                        :checked="field.role === 'external_power'"
+                        @change="
+                          setPowerField(field.key, ($event.target as HTMLInputElement).checked)
+                        "
+                      />用于显示外接电源状态</label
+                    >
                   </template>
                   <strong v-else>{{ field.name }}</strong>
                   <code class="field-key">{{ field.key }}</code>
@@ -198,7 +220,7 @@ function cleanPublic() {
                     停用
                   </button>
                   <button
-                    v-if="'type' in field"
+                    v-if="isCustom(field)"
                     type="button"
                     class="text-button danger small"
                     :aria-label="`删除${field.name}`"

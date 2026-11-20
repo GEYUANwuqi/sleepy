@@ -6,6 +6,7 @@ import logging
 import time
 from collections import Counter, deque
 from contextlib import asynccontextmanager
+from html import escape
 from http.cookiejar import CookieJar, DefaultCookiePolicy
 from pathlib import Path
 from uuid import uuid4
@@ -13,7 +14,13 @@ from uuid import uuid4
 import httpx
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from starlette.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    Response,
+    StreamingResponse,
+)
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
@@ -254,7 +261,38 @@ def create_web(upstream: str, internal_token: str, static_dir: Path | None = Non
                     )
 
     async def page(request):
-        return FileResponse(static_dir / "index.html")
+        index = static_dir / "index.html"
+        if request.url.path != "/":
+            return FileResponse(index)
+        try:
+            response = await app.state.client.get(
+                upstream + "/_internal/settings",
+                headers={INTERNAL_HEADER: internal_token},
+                timeout=2,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError:
+            return FileResponse(index)
+        site = response.json()
+        html = index.read_text(encoding="utf-8").replace(
+            "<title>似了吗？</title>", f"<title>{escape(site['title'])}</title>"
+        )
+        links = []
+        for filing in site["filings"]:
+            icon = (
+                '<img src="/assets/beian.png" alt="" width="16" height="18">'
+                if filing["kind"] == "police"
+                else ""
+            )
+            links.append(
+                f'<a href="{escape(filing["url"])}" target="_blank" rel="noopener noreferrer">{icon}{escape(filing["text"])}</a>'
+            )
+        if links:
+            footer = (
+                '<footer class="filing-links" aria-label="网站备案">' + "".join(links) + "</footer>"
+            )
+            html = html.replace("<noscript></noscript>", f"<noscript>{footer}</noscript>")
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
     async def health(request):
         if request.headers.get(INTERNAL_HEADER) != internal_token:

@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
-from .models import DeviceConfig, MusicReport, Settings, device_adapter
+from .models import DeviceConfig, DisplaySettings, MusicReport, Settings, device_adapter
 from .security import HASHER, digest, random_password, token
 
 
@@ -64,20 +64,6 @@ class Store:
             self.db.execute(
                 "INSERT OR IGNORE INTO settings VALUES (1, ?)", (Settings().model_dump_json(),)
             )
-            # Clear the retired stock description on pre-display-settings installations.
-            self.db.execute(
-                """UPDATE settings SET data=json_set(data, '$.description', '', '$.display', json('{}'))
-                   WHERE json_type(data, '$.display') IS NULL
-                     AND json_extract(data, '$.description')=?""",
-                ("一些设备，一点日常。",),
-            )
-            self.db.execute(
-                """UPDATE settings SET data=json_remove(data, '$.display.in_use',
-                          '$.display.not_using', '$.display.device_slice')
-                   WHERE json_type(data, '$.display.in_use') IS NOT NULL
-                      OR json_type(data, '$.display.not_using') IS NOT NULL
-                      OR json_type(data, '$.display.device_slice') IS NOT NULL"""
-            )
         self.path.chmod(0o600)
         return password
 
@@ -91,14 +77,27 @@ class Store:
             )
             self.db.execute("DELETE FROM sessions")
 
+    def _stored_settings(self):
+        return json.loads(self.db.execute("SELECT data FROM settings WHERE id=1").fetchone()[0])
+
     def settings(self) -> Settings:
-        return Settings.model_validate_json(
-            self.db.execute("SELECT data FROM settings WHERE id=1").fetchone()[0]
-        )
+        stored = self._stored_settings()
+        active = {k: v for k, v in stored.items() if k in Settings.model_fields}
+        if isinstance(active.get("display"), dict):
+            active["display"] = {
+                k: v for k, v in active["display"].items() if k in DisplaySettings.model_fields
+            }
+        return Settings.model_validate(active)
 
     def save_settings(self, settings: Settings):
+        # Preserve site-specific and retired keys when editing the supported settings.
         with self.db:
-            self.db.execute("UPDATE settings SET data=? WHERE id=1", (settings.model_dump_json(),))
+            stored = self._stored_settings()
+            updated = settings.model_dump(mode="json")
+            updated["display"] = stored.get("display", {}) | updated["display"]
+            self.db.execute(
+                "UPDATE settings SET data=? WHERE id=1", (json.dumps(stored | updated),)
+            )
 
     def settings_tokens(self):
         return [

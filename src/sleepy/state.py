@@ -57,7 +57,9 @@ def snapshot(store: Store, admin: bool, now: float | None = None):
             "order": c.order,
             "hints": c.hints.model_dump() if c.hints else None,
             "custom_fields": [
-                f.model_dump() for f in c.custom_fields if admin or f.key in c.public_fields
+                f.model_dump(exclude_none=True)
+                for f in c.custom_fields
+                if admin or f.key in c.public_fields
             ],
             "state": {k: v for k, v in readings.items() if admin or k in c.public_fields},
         }
@@ -79,6 +81,7 @@ def snapshot(store: Store, admin: bool, now: float | None = None):
     value = {
         "site": {
             "title": settings.title,
+            "filings": settings.display.filing_links(),
             "description": settings.description,
             "theme": settings.theme,
             "display": settings.display.model_dump(mode="json") | DeviceHints().model_dump(),

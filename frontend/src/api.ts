@@ -10,6 +10,7 @@ export interface CustomField {
   key: string
   name: string
   type: 'text' | 'number' | 'boolean'
+  role?: 'external_power' | null
 }
 export interface DeviceHints {
   in_use: string
@@ -58,6 +59,8 @@ export interface DisplaySettings {
   footer: string
   link_text: string
   link_url: string
+  icp_filing: string
+  police_filing: string
 }
 export interface MusicState {
   playback: 'unknown' | 'idle' | 'paused' | 'playing'
@@ -70,6 +73,7 @@ export interface Snapshot {
   version: string
   site: Pick<Settings, 'title' | 'description' | 'theme'> & {
     display: DisplaySettings & DeviceHints
+    filings: { kind: 'icp' | 'police'; text: string; url: string }[]
   }
   presence: { code: string; name: string; description: string; color: string; manual: boolean }
   devices: Device[]
@@ -164,3 +168,23 @@ export const fields = [
   { key: 'charging', name: '充电状态' },
   ...metrics,
 ]
+
+export function deviceFields(custom: CustomField[]) {
+  return [...fields.filter((f) => !custom.some((c) => c.key === f.key)), ...custom]
+}
+
+export function powerText(device: Device) {
+  const { battery_percent: percent, charging } = device.state
+  const field = device.custom_fields.find((f) => f.role === 'external_power')
+  const ac = field && device.state[field.key]
+  const parts: string[] = []
+  if (percent != null) parts.push(`电量 ${percent}%`)
+  if (ac === false) parts.push('电池供电')
+  else {
+    if (ac === true) parts.push('已接电')
+    if (charging === true) parts.push('充电中')
+    else if (ac === true && percent === 100) parts.push('已充满')
+    else if (charging === false) parts.push('未充电')
+  }
+  return parts.join(' · ')
+}

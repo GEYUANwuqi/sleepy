@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import ctypes
 import json
+import subprocess
 import sys
 import time
 from http.client import HTTPConnection, HTTPException, HTTPSConnection
@@ -83,12 +84,19 @@ def battery_status():
         ]
 
     power = PowerStatus()
-    if ctypes.windll.kernel32.GetSystemPowerStatus(
-        ctypes.byref(power)
-    ) and power.BatteryFlag not in (128, 255):
-        percent = power.BatteryLifePercent
-        return percent if 0 <= percent <= 100 else None, bool(power.BatteryFlag & 8)
-    return None, None
+    if not ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(power)):
+        return None, None
+    flags = power.BatteryFlag
+    percent = (
+        power.BatteryLifePercent
+        if flags not in (128, 255) and power.BatteryLifePercent <= 100
+        else None
+    )
+    if power.ACLineStatus == 1 or (flags != 255 and flags & 8):
+        return percent, True
+    if power.ACLineStatus == 0 and flags != 255:
+        return percent, False
+    return percent, None
 
 
 def collect():
@@ -97,7 +105,38 @@ def collect():
         using, status = windows_activity(COLLECT_APP)
     except (OSError, AttributeError):
         using, status = None, None
-    return {"using": using, "status": status, "battery_percent": percent, "charging": charging}
+    return {
+        "using": using,
+        "status": status,
+        "battery_percent": percent,
+        "charging": charging,
+    }
+
+
+def performance():
+    cpu = memory = gpu = None
+    try:
+        import psutil
+    except ImportError:
+        pass
+    else:
+        try:
+            cpu = psutil.cpu_percent(interval=0.2)
+            memory = psutil.virtual_memory().percent
+        except (OSError, psutil.Error):
+            pass
+    try:
+        output = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+            timeout=2,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        values = [int(line) for line in output.splitlines() if line.strip().isdigit()]
+        gpu = max((value for value in values if 0 <= value <= 100), default=None)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return {"cpu_percent": cpu, "memory_percent": memory, "gpu_percent": gpu}
 
 
 def endpoint(key):
@@ -141,11 +180,15 @@ def send_report(url, path, key, payload):
 
 def run(url, interval):
     previous, last, delay = None, 0, 2
+    readings, next_sample = {}, 0
     while True:
         payload = collect()
+        if time.monotonic() >= next_sample:
+            readings = performance()
+            next_sample = time.monotonic() + 30
         if payload != previous or time.monotonic() - last >= interval:
             try:
-                send_report(url, "/api/device/report", DEVICE_KEY, payload)
+                send_report(url, "/api/device/report", DEVICE_KEY, payload | readings)
             except (OSError, HTTPException) as exc:
                 print(f"上报失败（{type(exc).__name__}），{delay} 秒后重试。", file=sys.stderr)
                 time.sleep(delay)
@@ -219,7 +262,7 @@ def main():
             return
         url = endpoint(DEVICE_KEY)
         if args.command == "report":
-            payload = json.loads(args.json) if args.json is not None else collect()
+            payload = json.loads(args.json) if args.json is not None else collect() | performance()
             if not isinstance(payload, dict):
                 raise ValueError("上报内容必须是 JSON 对象。")
             send_report(url, "/api/device/report", DEVICE_KEY, payload)

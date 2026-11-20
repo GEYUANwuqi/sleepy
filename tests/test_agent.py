@@ -49,7 +49,10 @@ def test_standalone_report(tmp_path, platform):
                 platform
             ):
                 subprocess.run(command, cwd=tmp_path, check=True, timeout=10)
-                assert set(received[-1][2]) == {"using", "status", "battery_percent", "charging"}
+                fields = {"using", "status", "battery_percent", "charging"}
+                if platform == "windows":
+                    fields.update(("cpu_percent", "memory_percent", "gpu_percent"))
+                assert set(received[-1][2]) == fields
         finally:
             server.shutdown()
             worker.join()
@@ -70,6 +73,78 @@ def test_invalid_endpoint(url, platform, monkeypatch):
     monkeypatch.setitem(endpoint.__globals__, "SITE_URL", url)
     with pytest.raises(ValueError):
         endpoint("test-key")
+
+
+@pytest.mark.parametrize(
+    "ac, flags, percent, success, expected",
+    [
+        (1, 1, 100, True, (100, True)),
+        (1, 0, 80, True, (80, True)),
+        (0, 9, 72, True, (72, True)),
+        (255, 8, 50, True, (50, True)),
+        (0, 0, 67, True, (67, False)),
+        (1, 128, 255, True, (None, True)),
+        (1, 255, 255, True, (None, True)),
+        (0, 255, 255, True, (None, None)),
+        (255, 0, 50, True, (50, None)),
+        (1, 8, 50, False, (None, None)),
+    ],
+)
+def test_windows_power_report(monkeypatch, ac, flags, percent, success, expected):
+    import ctypes
+    from types import SimpleNamespace
+
+    def get_power(pointer):
+        power = pointer._obj
+        power.ACLineStatus, power.BatteryFlag, power.BatteryLifePercent = ac, flags, percent
+        return success
+
+    collect = run_path(str(CLIENTS / "windows/report.py"))["collect"]
+    kernel = SimpleNamespace(GetSystemPowerStatus=get_power)
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(kernel32=kernel), raising=False)
+    monkeypatch.setitem(collect.__globals__, "windows_activity", lambda _: (None, None))
+    payload = collect()
+    assert payload == {
+        "using": None,
+        "status": None,
+        "battery_percent": expected[0],
+        "charging": expected[1],
+    }
+
+
+def test_windows_activity_reports_reuse_performance_sample(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    run = run_path(str(CLIENTS / "windows/report.py"))["run"]
+    now = 0
+    sent = []
+    performance = Mock(side_effect=[{"cpu_percent": 21.0}, {"cpu_percent": 36.0}])
+
+    def sleep(seconds):
+        nonlocal now
+        now += seconds
+        if now > 32:
+            raise StopIteration
+
+    def send(url, path, key, payload):
+        sent.append((now, payload))
+
+    for key, value in {
+        "time": SimpleNamespace(monotonic=lambda: now, sleep=sleep),
+        "collect": lambda: {"using": now >= 2},
+        "send_report": send,
+        "performance": performance,
+    }.items():
+        monkeypatch.setitem(run.__globals__, key, value)
+    with pytest.raises(StopIteration):
+        run(None, 30)
+    assert sent == [
+        (0, {"using": False, "cpu_percent": 21.0}),
+        (2, {"using": True, "cpu_percent": 21.0}),
+        (32, {"using": True, "cpu_percent": 36.0}),
+    ]
+    assert performance.call_count == 2
 
 
 @pytest.mark.parametrize("playback", ["PLAYING", "PAUSED", "STOPPED"])

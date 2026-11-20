@@ -1,12 +1,12 @@
 # 设备上报
 
-在要上报状态的手机或电脑上运行对应脚本即可。Windows 和 Linux 的普通设备上报只需 Python 标准库，Android 使用 AutoX.js。
+在要上报状态的手机或电脑上运行对应脚本即可。Windows 和 Linux 的基础上报使用 Python 标准库，Android 使用 AutoX.js。
 
 ## 填写站点地址和设备 Key
 
 1. 登录 Sleepy 管理后台，在「设备与状态」创建设备，复制生成的设备 Key。每台设备使用自己的 Key。
 2. 下载对应平台的脚本，编辑开头的 `SITE_URL` 和 `DEVICE_KEY`。`SITE_URL` 填设备能访问的站点根地址，例如 `https://sleepy.example.com`，脚本会自动补上接口路径。如果站点部署在另一台机器上，请填那台机器的域名或局域网地址。
-3. 默认只采集使用状态和可用的电池信息。需要上报前台应用名称时，开启脚本中的 `COLLECT_APP`，并在后台「编辑设备」中允许接收 `status` 字段。
+3. 基础字段包括使用状态和可读取的电池信息。需要上报前台应用名称时，开启脚本中的 `COLLECT_APP`，并在后台「编辑设备」中允许接收 `status` 字段。
 
 ```python
 SITE_URL = "https://sleepy.example.com"
@@ -54,6 +54,10 @@ systemctl --user status sleepy-agent.service
 X11 桌面采集依赖 X11/Xss 库，获取应用名称另需 `xprop`。如果前台运行能识别桌面，但服务识别不到，在图形会话的终端执行 `systemctl --user import-environment DISPLAY XAUTHORITY XDG_SESSION_TYPE`，再执行 `systemctl --user restart sleepy-agent.service`。Wayland 或无桌面环境仍可上报，无法检测的活动字段为 `null`。
 
 ## Windows · 静默自启
+
+Windows 客户端每 30 秒读取一次性能数据。用运行脚本的解释器执行 `py -3.12 -m pip install psutil` 可采集 CPU 和内存使用率。系统能运行 `nvidia-smi` 时还会采集 GPU 使用率，多卡取最高值。无法读取的指标为 `null`。前台应用或电源状态变化时会立即上报并复用最近的性能读数。
+
+Windows 将插电或电池正在充电统一上报为 `charging: true`，插电满电时也显示「充电中」。在后台为设备启用、接收并公开预设的「充电状态」，即可在首页显示。
 
 要静默自启，将[自启脚本](windows/install-startup.ps1)下载到同一目录，执行以下命令一次。计划任务会立即启动，以后在当前用户登录时通过同一解释器目录下的 `pythonw.exe` 在后台运行。移动脚本或 Python 安装目录后需重新注册。
 

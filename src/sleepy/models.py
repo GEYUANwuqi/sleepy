@@ -1,5 +1,6 @@
 """Validated management configuration and server-side device adapters."""
 
+import re
 from abc import ABC
 from functools import lru_cache
 from ipaddress import ip_network
@@ -50,17 +51,7 @@ class CustomField(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     type: Literal["text", "number", "boolean"] = "text"
 
-    @field_validator("key")
-    @classmethod
-    def valid_key(cls, key):
-        reserved = {"id", "type", "show_name", "field", "fields", "last_updated", "constructor"}
-        if (
-            key in REPORT_FIELDS
-            or key in reserved
-            or key in (DeviceConfig.model_fields.keys() - {"enabled_fields"})
-        ):
-            raise ValueError("字段标识与预设字段或设备资料冲突")
-        return key
+    role: Literal["external_power"] | None = None
 
 
 class DeviceConfig(BaseModel):
@@ -79,6 +70,18 @@ class DeviceConfig(BaseModel):
     receive_fields: list[str] | None = None
     public_fields: list[str] = Field(default_factory=lambda: ["using"])
 
+    def conflicting_new_fields(self, previous: "DeviceConfig | None"):
+        # Existing device-owned keys remain valid when a later version adds a preset.
+        keys = {f.key for f in self.custom_fields}
+        if previous:
+            keys.difference_update(f.key for f in previous.custom_fields)
+        reserved = {"id", "type", "show_name", "field", "fields", "last_updated", "constructor"}
+        return keys & (
+            REPORT_FIELDS.keys()
+            | reserved
+            | (DeviceConfig.model_fields.keys() - {"enabled_fields"})
+        )
+
     @field_validator("name")
     @classmethod
     def trim_name(cls, value):
@@ -91,6 +94,9 @@ class DeviceConfig(BaseModel):
         if self.participates is None:
             self.participates = self.kind != "server"
         keys = {field.key for field in self.custom_fields}
+        power_fields = [f for f in self.custom_fields if f.role == "external_power"]
+        if len(power_fields) > 1 or any(f.type != "boolean" for f in power_fields):
+            raise ValueError("外接电源显示只可绑定一个布尔字段")
         if len(keys) != len(self.custom_fields):
             raise ValueError("该设备已有同名字段标识")
         if self.enabled_fields is None:
@@ -160,6 +166,25 @@ class DisplaySettings(BaseModel):
     footer: str = Field(default="", max_length=300)
     link_text: str = Field(default="", max_length=80)
     link_url: HttpUrl | Literal[""] = ""
+    icp_filing: str = Field(default="", max_length=80)
+    police_filing: str = Field(default="", max_length=80, pattern=r"^$|^[^0-9]*[0-9]{14}\s*号?$")
+
+    def filing_links(self):
+        links = []
+        if self.icp_filing:
+            links.append(
+                {"kind": "icp", "text": self.icp_filing, "url": "https://beian.miit.gov.cn/"}
+            )
+        if self.police_filing:
+            code = re.search(r"[0-9]{14}", self.police_filing)[0]
+            links.append(
+                {
+                    "kind": "police",
+                    "text": self.police_filing,
+                    "url": f"https://beian.mps.gov.cn/#/query/webSearch?code={code}",
+                }
+            )
+        return links
 
 
 class Settings(BaseModel):
@@ -220,7 +245,12 @@ class Settings(BaseModel):
 
 @lru_cache(maxsize=32)
 def report_model(fields: tuple[str, ...], custom: tuple[tuple[str, str], ...]):
-    definitions = {name: REPORT_FIELDS[name] for name in fields if name in REPORT_FIELDS}
+    custom_keys = {key for key, _ in custom}
+    definitions = {
+        name: REPORT_FIELDS[name]
+        for name in fields
+        if name in REPORT_FIELDS and name not in custom_keys
+    }
     # Use internal names so arbitrary wire keys cannot shadow Pydantic methods.
     for index, (key, kind) in enumerate(custom):
         definitions[f"custom_{index}"] = (CUSTOM_TYPES[kind] | None, Field(default=None, alias=key))

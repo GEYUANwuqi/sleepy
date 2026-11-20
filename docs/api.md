@@ -28,7 +28,7 @@ curl --fail-with-body -X POST http://127.0.0.1:8080/api/device/report \
 | --- | --- |
 | `using` | 布尔值，表示设备是否正在使用 |
 | `status` | 活动描述，最多 512 个字符 |
-| `battery_percent`、`charging` | 电量为 0–100 的整数，充电状态为布尔值 |
+| `battery_percent`、`charging` | 电量为 0–100 的整数，充电状态为布尔值。Windows 客户端在插电或电池充电时上报 `true` |
 | `cpu_percent`、`gpu_percent`、`memory_percent` | 使用率为 0–100 的数值 |
 | 设备自定义字段 | 使用后台定义的字段标识与类型，直接放在 JSON 顶层 |
 
@@ -65,6 +65,8 @@ curl --fail-with-body -X PATCH http://127.0.0.1:8080/api/admin/settings \
 | `PUT` | 替换完整配置。请求体使用 `GET` 返回的 `settings` 对象 |
 
 写入成功返回 `204`。API Token 可读写站点设置并切换当前状态，调用时无需 Cookie 或 CSRF 令牌。
+
+用 `display.icp_filing` 和 `display.police_filing` 设置页脚备案文字。两个字段可独立设为空字符串以隐藏对应链接。公安备案文字需包含 14 位备案编号。通过 `PATCH` 提交 `{"display":{"icp_filing":""}}` 只会清除 ICP 备案。
 
 ### 切换当前状态
 

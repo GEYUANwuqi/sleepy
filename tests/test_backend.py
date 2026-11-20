@@ -3,6 +3,7 @@ import time
 
 from conftest import sign_in
 
+from sleepy.models import REPORT_FIELDS
 from sleepy.security import validate_password, verify_password
 from sleepy.state import snapshot
 
@@ -281,6 +282,32 @@ def test_device_local_fields_visibility_and_schema_changes(admin_client):
     for key in ("status", "id", "name", "_bad"):
         config["custom_fields"] = [temperature | {"key": key}]
         assert client.put(endpoint, headers=headers, json=config).status_code == 422
+
+
+def test_later_preset_preserves_existing_device_field(admin_client, monkeypatch):
+    client, app, headers, _ = admin_client
+    field = {"key": "sensor_flag", "type": "boolean", "name": "已触发"}
+    config = {
+        "name": "传感器",
+        "custom_fields": [field],
+        "receive_fields": [field["key"]],
+        "public_fields": [],
+    }
+    device = new_device(client, headers, **config)
+    monkeypatch.setitem(REPORT_FIELDS, field["key"], (str | None, None))
+    assert client.get("/api/admin/devices").status_code == 200
+    assert (
+        client.put(
+            f"/api/admin/devices/{device['id']}",
+            headers=headers,
+            json=config | {"name": "原传感器"},
+        ).status_code
+        == 204
+    )
+    assert report(client, device["key"], {"sensor_flag": True}).status_code == 204
+    assert app.state.store.device(device["id"])["state"] == {"sensor_flag": True}
+    assert report(client, device["key"], {"sensor_flag": "text"}).status_code == 422
+    assert client.post("/api/admin/devices", headers=headers, json=config).status_code == 422
 
 
 def test_enabled_field_without_permissions_survives_edits(admin_client):

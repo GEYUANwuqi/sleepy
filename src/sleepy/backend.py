@@ -167,7 +167,12 @@ def create_backend(data_dir: Path, internal_token: str, runtime: dict | None = N
     @app.get("/_internal/settings")
     async def internal_settings(request: Request):
         internal(request)
-        return {"stats_categories": store().settings().stats_categories}
+        settings = store().settings()
+        return {
+            "stats_categories": settings.stats_categories,
+            "title": settings.title,
+            "filings": settings.display.filing_links(),
+        }
 
     @app.post("/_internal/metrics", status_code=204)
     async def metrics_ingest(request: Request, batch: MetricBatch):
@@ -341,6 +346,8 @@ def create_backend(data_dir: Path, internal_token: str, runtime: dict | None = N
     @app.post("/api/admin/devices", status_code=201)
     async def create_device(request: Request, body: DeviceConfig):
         admin(request, write=True)
+        if body.conflicting_new_fields(None):
+            raise HTTPException(422, "字段标识与预设字段或设备资料冲突")
         id, key = store().create_device(body)
         refresh()
         return {"id": id, "key": key}
@@ -348,7 +355,8 @@ def create_backend(data_dir: Path, internal_token: str, runtime: dict | None = N
     @app.put("/api/admin/devices/{id}", status_code=204)
     async def update_device(id: str, request: Request, body: DeviceConfig):
         admin(request, write=True)
-        device(id)
+        if body.conflicting_new_fields(device(id)["config"]):
+            raise HTTPException(422, "字段标识与预设字段或设备资料冲突")
         store().update_device(id, body)
         refresh()
 

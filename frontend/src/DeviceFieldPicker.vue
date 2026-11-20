@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { fields, type DeviceConfig, type CustomField } from './api'
+import { deviceFields, fields, type DeviceConfig, type CustomField } from './api'
 
 const props = defineProps<{ device: DeviceConfig }>()
 const emit = defineEmits<{ apply: [keys: string[], custom: CustomField[]]; cancel: [] }>()
 const customFields = ref([...props.device.custom_fields])
 const available = computed(() =>
-  [...fields, ...customFields.value].filter((f) => !props.device.enabled_fields.includes(f.key)),
+  deviceFields(customFields.value).filter((f) => !props.device.enabled_fields.includes(f.key)),
 )
 const selected = ref<string[]>([])
 const key = ref('')

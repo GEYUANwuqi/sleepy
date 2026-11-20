@@ -106,6 +106,7 @@ onUnmounted(() => {
         <footer
           v-if="
             state.site.display.footer ||
+            state.site.filings.length ||
             (state.site.display.link_url && state.site.display.link_text)
           "
           class="public-footer glass-card"
@@ -116,6 +117,24 @@ onUnmounted(() => {
             :href="state.site.display.link_url"
             >{{ state.site.display.link_text }}</a
           >
+          <nav v-if="state.site.filings.length" class="filing-links" aria-label="网站备案">
+            <a
+              v-for="filing in state.site.filings"
+              :key="filing.kind"
+              :href="filing.url"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <img
+                v-if="filing.kind === 'police'"
+                src="/assets/beian.png"
+                width="16"
+                height="18"
+                alt=""
+              />
+              {{ filing.text }}
+            </a>
+          </nav>
         </footer>
         <p v-if="!connected && !error" class="connection-note" role="status">正在连接实时更新…</p>
       </template>

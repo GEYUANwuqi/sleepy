@@ -7,6 +7,7 @@ import {
   kindNames,
   systemNames,
   onlineNames,
+  powerText,
   type Auth,
   type Snapshot,
   type Settings,
@@ -537,11 +538,7 @@ onUnmounted(() => {
                 {{
                   device.state.status ||
                   (device.state.using === true ? '正在使用' : '暂无活动描述')
-                }}<span v-if="device.state.battery_percent != null">
-                  · {{ device.state.battery_percent }}%{{
-                    device.state.charging ? ' 充电中' : ''
-                  }}</span
-                >
+                }}<span v-if="powerText(device)"> · {{ powerText(device) }}</span>
               </p>
               <DeviceReadings :device="device" />
               <p v-if="device.last_updated" class="hint">
@@ -683,7 +680,7 @@ onUnmounted(() => {
           </section>
 
           <section class="panel settings-panel">
-            <h2>公开页脚</h2>
+            <h2>首页页脚</h2>
             <label
               >页脚文字<textarea v-model.trim="settings.display.footer" maxlength="300" rows="2" />
             </label>
@@ -700,6 +697,22 @@ onUnmounted(() => {
                   type="url"
                   placeholder="https://"
                   :required="!!settings.display.link_text"
+              /></label>
+            </div>
+            <div class="form-grid">
+              <label
+                >ICP备案号<input
+                  v-model.trim="settings.display.icp_filing"
+                  maxlength="80"
+                  placeholder="留空则隐藏"
+              /></label>
+              <label
+                >公安备案号<input
+                  v-model.trim="settings.display.police_filing"
+                  maxlength="80"
+                  pattern="[^0-9]*[0-9]{14}\s*号?"
+                  title="填写含 14 位数字的公安备案号"
+                  placeholder="省简称 + 公网安备 + 14 位数字 + 号"
               /></label>
             </div>
           </section>

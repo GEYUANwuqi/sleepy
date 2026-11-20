@@ -34,7 +34,7 @@ line-length = 100
 
 [tool.uv.build-backend]
 source-include = [
-    "frontend/src/**", "frontend/index.html", "frontend/package*.json", "frontend/*.ts",
+    "frontend/src/**", "frontend/public/assets/**", "frontend/index.html", "frontend/package*.json", "frontend/*.ts",
     "frontend/tsconfig.json", "frontend/.prettierrc.json", "frontend/tests/**",
     "clients/README.md", "clients/android/*.js", "clients/windows/*.py", "clients/windows/*.ps1",
     "clients/linux/*.py", "clients/linux/*.service",

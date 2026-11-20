@@ -5,10 +5,12 @@ const props = defineProps<{ device: Device }>()
 const readings = computed(() => {
   const { state, custom_fields } = props.device
   return [
-    ...metrics.map((f) => ({ ...f, unit: '%' })),
+    ...metrics
+      .filter((f) => !custom_fields.some((c) => c.key === f.key))
+      .map((f) => ({ ...f, unit: '%' })),
     ...(custom_fields ?? []).map((f) => ({ ...f, unit: '' })),
   ]
-    .filter((f) => state[f.key] != null)
+    .filter((f) => state[f.key] != null && !('role' in f && f.role === 'external_power'))
     .map((f) => {
       const value = state[f.key]
       return {

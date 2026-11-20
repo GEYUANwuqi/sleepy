@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { kindNames, systemNames, onlineNames, type Device, type DeviceHints } from './api'
+import {
+  kindNames,
+  systemNames,
+  onlineNames,
+  powerText,
+  type Device,
+  type DeviceHints,
+} from './api'
 import DeviceReadings from './DeviceReadings.vue'
 import DeviceIcon from './DeviceIcon.vue'
 
 const props = defineProps<{ device: Device; display: DeviceHints }>()
+const power = computed(() => powerText(props.device))
 const activity = computed(() => {
   const { device, display } = props
   if (device.online === 'offline') return display.offline
@@ -30,17 +38,7 @@ const activity = computed(() => {
       <span class="badge" :class="{ green: device.online === 'online' }"
         ><i class="dot" />{{ onlineNames[device.online] }}</span
       >
-      <p
-        v-if="device.state.battery_percent != null || device.state.charging != null"
-        class="small muted"
-      >
-        <span v-if="device.state.battery_percent != null"
-          >电量 {{ device.state.battery_percent }}%</span
-        >
-        <span v-if="device.state.charging != null">
-          {{ device.state.charging ? '充电中' : '未充电' }}</span
-        >
-      </p>
+      <p v-if="power" class="small muted">{{ power }}</p>
     </div>
     <DeviceReadings :device="device" />
   </article>

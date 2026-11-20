@@ -29,6 +29,11 @@ test('initialize admin, create device, report, live privacy change and persisten
   await expect(page.getByLabel('接收CPU 使用率')).toHaveCount(0)
   await page.getByRole('button', { name: '添加字段', exact: true }).click()
   await page.getByLabel('启用CPU 使用率').check()
+  await page.getByLabel('字段标识', { exact: true }).fill('power_cable')
+  await page.getByLabel('显示名称', { exact: true }).fill('外接电源')
+  await page.getByRole('combobox', { name: '字段类型', exact: true }).selectOption('boolean')
+  await page.getByRole('button', { name: '创建自定义字段' }).click()
+  await page.getByLabel('启用外接电源').check()
   await page.getByLabel('启用内存使用率').check()
   await page.getByLabel('字段标识', { exact: true }).fill('temperature')
   await page.getByLabel('显示名称', { exact: true }).fill('温度（℃）')
@@ -47,6 +52,10 @@ test('initialize admin, create device, report, live privacy change and persisten
   await expect(page.getByLabel('公开CPU 使用率')).toBeDisabled()
   await page.getByLabel('接收CPU 使用率').check()
   await page.getByLabel('公开CPU 使用率').check()
+  await page.getByLabel('用于显示外接电源状态').check()
+  await page.getByLabel('接收外接电源').check()
+  await page.getByLabel('公开外接电源').check()
+  await page.getByLabel('公开充电状态').check()
   await page.getByLabel('接收温度（℃）').check()
   await page.getByLabel('公开温度（℃）').check()
   await page.getByLabel('自定义设备提示').check()
@@ -55,16 +64,18 @@ test('initialize admin, create device, report, live privacy change and persisten
   await page.getByRole('button', { name: '保存设备', exact: true }).click()
   const key = (await page.locator('.secret-key').textContent())!
   await page.getByRole('button', { name: '已保存，关闭' }).click()
+  const reportHeaders = { Authorization: `Bearer ${key}` }
+  const readings = {
+    using: true,
+    status: 'Visual Studio Code',
+    battery_percent: 86,
+    charging: true,
+    cpu_percent: 23.5,
+    temperature: 54,
+  }
   const response = await request.post('/api/device/report', {
-    headers: { Authorization: `Bearer ${key}` },
-    data: {
-      using: true,
-      status: 'Visual Studio Code',
-      battery_percent: 86,
-      charging: true,
-      cpu_percent: 23.5,
-      temperature: 54,
-    },
+    headers: reportHeaders,
+    data: { ...readings, power_cable: true },
   })
   expect(response.status()).toBe(204)
   const visitor = await browser.newContext()
@@ -87,6 +98,17 @@ test('initialize admin, create device, report, live privacy change and persisten
   await expect(publicPage.getByText('Visual Studio Code')).toBeVisible()
   await expect(publicPage.getByText('温度（℃）')).toBeVisible()
   await expect(publicPage.getByText('23.5%')).toBeVisible()
+  for (const view of [page, publicPage]) {
+    await expect(view.getByText(/已接电 · 充电中/)).toBeVisible()
+  }
+  const pluggedIn = await request.post('/api/device/report', {
+    headers: reportHeaders,
+    data: { ...readings, battery_percent: 100 },
+  })
+  expect(pluggedIn.status()).toBe(204)
+  for (const view of [page, publicPage]) {
+    await expect(view.getByText(/电量 100% · 充电中/)).toBeVisible()
+  }
   await page.getByLabel('启用SMTC').click()
   const musicKey = (await page.locator('.secret-key').textContent())!
   await page.getByRole('button', { name: '已保存，关闭' }).click()
@@ -117,7 +139,7 @@ test('initialize admin, create device, report, live privacy change and persisten
   await page.getByRole('button', { name: '保存设备', exact: true }).click()
   for (const view of [publicPage, page]) {
     await expect(view.getByText('笔记本失联了喵', { exact: true })).toBeVisible({ timeout: 15000 })
-    await expect(view.getByText(/Visual Studio Code|86%|23\.5%|温度（℃）/)).toHaveCount(0)
+    await expect(view.getByText(/Visual Studio Code|电量 100%|23\.5%|温度（℃）/)).toHaveCount(0)
   }
   // Editing a Vue-reactive device must open correctly, and privacy updates propagate over SSE.
   await request.post('/api/device/report', {
@@ -211,6 +233,8 @@ test('initialize admin, create device, report, live privacy change and persisten
   await page.getByLabel('站点标题').fill('属于我的小小近况')
   await page.getByLabel('链接文字').fill('个人主页')
   await page.getByLabel('链接地址').fill('https://example.org/')
+  await page.getByLabel('ICP备案号').fill('京ICP备00000000号')
+  await page.getByLabel('公安备案号').fill('京公网安备00000000000000号')
   await expect(page.getByText('已自动保存', { exact: true })).toBeVisible()
   await expect(publicPage.getByRole('heading', { name: '属于我的小小近况' })).toBeVisible()
   await expect(publicPage.getByText('设备暂未公开')).toBeVisible()
@@ -225,6 +249,18 @@ test('initialize admin, create device, report, live privacy change and persisten
   await expect(publicPage.locator('.glass-card').first()).toHaveCSS('--card-opacity', '78%')
   await expect(publicPage).toHaveTitle('属于我的小小近况')
   await expect(publicPage.getByText('脚本同步')).toBeVisible()
+  await expect(publicPage.getByRole('link', { name: '京ICP备00000000号' })).toHaveAttribute(
+    'href',
+    'https://beian.miit.gov.cn/',
+  )
+  const noJs = await browser.newContext({ javaScriptEnabled: false })
+  const fallback = await noJs.newPage()
+  await fallback.goto('/')
+  await expect(fallback.getByRole('link', { name: '京公网安备00000000000000号' })).toHaveAttribute(
+    'href',
+    'https://beian.mps.gov.cn/#/query/webSearch?code=00000000000000',
+  )
+  await expect(fallback).toHaveTitle('属于我的小小近况')
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: '撤销 站点脚本' }).click()
   await expect(page.getByRole('button', { name: '撤销 站点脚本' })).toHaveCount(0)
@@ -237,6 +273,12 @@ test('initialize admin, create device, report, live privacy change and persisten
   await expect(page.getByLabel('无设备提示')).toHaveValue('设备暂未公开')
   await page.getByLabel('背景图片地址').fill('')
   await page.getByLabel('无设备提示').fill('')
+  await page.getByLabel('公安备案号').fill('')
+  await expect(publicPage.getByRole('link', { name: /公网安备/ })).toHaveCount(0)
+  await fallback.reload()
+  await expect(fallback.getByRole('link', { name: /公网安备/ })).toHaveCount(0)
+  await expect(fallback.getByRole('link', { name: /ICP备/ })).toBeVisible()
+  await noJs.close()
   await expect(page.getByText('已自动保存', { exact: true })).toBeVisible()
   await expect(publicPage.locator('.public-wallpaper')).toHaveCount(0)
   await expect(publicPage.getByRole('heading', { name: '设备', exact: true })).toHaveCount(0)

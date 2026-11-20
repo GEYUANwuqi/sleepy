@@ -262,6 +262,9 @@ code {
   padding: 0;
 }
 .public-footer {
+  position: sticky;
+  bottom: max(6px, env(safe-area-inset-bottom));
+  z-index: 1;
   margin-top: 14px;
   padding: 14px 20px;
   text-align: center;
@@ -271,6 +274,20 @@ code {
 .public-footer a {
   color: var(--accent);
   text-decoration: underline;
+}
+.filing-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 16px;
+}
+.filing-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.public-footer > :not(:first-child).filing-links {
+  margin-top: 8px;
 }
 .connection-note {
   margin-top: 16px;
