@@ -262,9 +262,6 @@ code {
   padding: 0;
 }
 .public-footer {
-  position: sticky;
-  bottom: max(6px, env(safe-area-inset-bottom));
-  z-index: 1;
   margin-top: 14px;
   padding: 14px 20px;
   text-align: center;

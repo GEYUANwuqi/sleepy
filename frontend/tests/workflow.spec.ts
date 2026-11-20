@@ -1,5 +1,37 @@
 import { test, expect } from '@playwright/test'
 
+test('手机长设备列表的备案区随页面滚动', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route('**/api/status/events', (route) => route.abort())
+  await page.route('**/api/status', async (route) => {
+    const snapshot = await (await route.fetch()).json()
+    snapshot.site.display.background_url = ''
+    snapshot.site.filings = [{ kind: 'icp', text: '测试备案', url: 'https://beian.miit.gov.cn/' }]
+    snapshot.devices = Array.from({ length: 20 }, (_, i) => ({
+      id: String(i),
+      name: `设备 ${i + 1}`,
+      kind: 'desktop',
+      os: 'windows',
+      online: 'online',
+      state: {},
+      custom_fields: [],
+    }))
+    await route.fulfill({ json: snapshot })
+  })
+  await page.goto('/')
+  const footer = page.locator('.public-footer')
+  const lastDevice = page.locator('.device-card').last()
+  await expect(lastDevice).toContainText('设备 20')
+  await expect(footer).not.toBeInViewport()
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+  await expect(footer.getByRole('link', { name: '测试备案' })).toBeInViewport()
+  await expect(lastDevice).toBeInViewport({ ratio: 1 })
+  const deviceBottom = await lastDevice.evaluate((el) => el.getBoundingClientRect().bottom)
+  expect(await footer.evaluate((el) => el.getBoundingClientRect().top)).toBeGreaterThan(
+    deviceBottom,
+  )
+})
+
 test('initialize admin, create device, report, live privacy change and persistence', async ({
   page,
   browser,
